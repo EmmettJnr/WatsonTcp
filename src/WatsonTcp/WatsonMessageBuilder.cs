@@ -112,6 +112,22 @@
             data = await ReadByteArray(stream, new byte[headerSize], 0, headerSize, token).ConfigureAwait(false);
             WatsonMessage msg = GetWatsonMessageFromBytes(data);
             msg.DataStream = stream;
+
+            if (msg.ContentLength < 0)
+            {
+                throw new IOException("Invalid content length.");
+            }
+
+            /*
+            // Example of how to enforce a maximum content length, could probably
+            // be moved into a setting.
+            const int maxContentLength = 10_000;
+            if (msg.ContentLength > maxContentLength)
+            {
+                throw new IOException($"Content length exceeds the max content length. {msg.ContentLength} > " +
+                                      $"{maxContentLength} bytes.");
+            }*/
+            
             return msg;
         }
 
