@@ -3,8 +3,6 @@
     using System;
     using System.Collections.Generic;
     using System.IO;
-    using System.Linq;
-    using System.Text;
     using System.Threading;
     using System.Threading.Tasks;
 
@@ -93,47 +91,27 @@
         /// Read from a stream and construct a message.
         /// </summary>
         /// <param name="stream">Stream.</param>
+        /// <param name="maxHeaderSize">Maximum header size.</param>
         /// <param name="token">Cancellation token.</param>
-        internal async Task<WatsonMessage> BuildFromStream(Stream stream, CancellationToken token = default)
+        internal async Task<WatsonMessage> BuildFromStream(Stream stream, long maxHeaderSize, 
+            CancellationToken token = default)
         {
             if (stream == null) throw new ArgumentNullException(nameof(stream));
             if (!stream.CanRead) throw new ArgumentException("Cannot read from stream.");
 
-            WatsonMessage msg = new WatsonMessage();
-
-            // {"len":0,"s":"Normal"}\r\n\r\n
-            byte[] headerBytes = new byte[24];
-
-            await stream.ReadAsync(headerBytes, 0, 24, token).ConfigureAwait(false);
-            byte[] headerBuffer = new byte[1];
-
-            while (true)
+            // Read the header size and validate it.
+            byte[] data = await ReadByteArray(stream, new byte[4], 0, 4, token).ConfigureAwait(false);
+            int headerSize = BitConverter.ToInt32(data, 0);
+            if (headerSize < 0 || headerSize > maxHeaderSize)
             {
-                byte[] endCheck = headerBytes.Skip(headerBytes.Length - 4).Take(4).ToArray();
-
-                if ((int)endCheck[3] == 0
-                    && (int)endCheck[2] == 0
-                    && (int)endCheck[1] == 0
-                    && (int)endCheck[0] == 0)
-                {
-                    throw new IOException("Null header data indicates peer disconnected.");
-                }
-
-                if ((int)endCheck[3] == 10
-                    && (int)endCheck[2] == 13
-                    && (int)endCheck[1] == 10
-                    && (int)endCheck[0] == 13)
-                {
-                    break;
-                }
-
-                await stream.ReadAsync(headerBuffer, 0, 1, token).ConfigureAwait(false);
-                headerBytes = WatsonCommon.AppendBytes(headerBytes, headerBuffer);
+                throw new IOException($"Invalid header size ({headerSize}), must be more than zero and less " +
+                                      $"or equal to {maxHeaderSize} bytes.");
             }
-
-            msg = _SerializationHelper.DeserializeJson<WatsonMessage>(Encoding.UTF8.GetString(headerBytes));
+            
+            // Read the header bytes and create the message.
+            data = await ReadByteArray(stream, new byte[headerSize], 0, headerSize, token).ConfigureAwait(false);
+            WatsonMessage msg = GetWatsonMessageFromBytes(data);
             msg.DataStream = stream;
-
             return msg;
         }
 
@@ -144,11 +122,101 @@
         /// <returns>Header bytes.</returns>
         internal byte[] GetHeaderBytes(WatsonMessage msg)
         {
-            string jsonStr = _SerializationHelper.SerializeJson(msg, false);
-            byte[] jsonBytes = Encoding.UTF8.GetBytes(jsonStr);
-            byte[] end = Encoding.UTF8.GetBytes("\r\n\r\n");
-            byte[] final = WatsonCommon.AppendBytes(jsonBytes, end);
-            return final;
+            // !!! If you're modifying this method, make sure to update the corresponding
+            // !!! GetWatsonMessageFromBytes method to match the changes.
+            
+            MemoryStream stream = new MemoryStream();
+            BinaryWriter writer = new BinaryWriter(stream);
+
+            // Create the byte flag specifying what fields are null.
+            byte flag = 0;
+            if (msg.PresharedKey != null) flag = (byte)(flag | 0x01);
+            if (msg.Metadata != null) flag = (byte)(flag | 0x02);
+            if (msg.ExpirationUtc != null) flag = (byte)(flag | 0x04);
+            if (msg.Status == MessageStatus.RegisterClient) flag = (byte)(flag | 0x08);
+            // Write the flags at the start of the message.
+            writer.Write(flag);
+            
+            // Write the content of the header.
+            writer.Write(msg.ContentLength);
+            if (msg.PresharedKey != null) writer.Write(msg.PresharedKey);
+            writer.Write((int)msg.Status);
+            // TODO: Metadata.
+            writer.Write(msg.SyncRequest);
+            writer.Write(msg.SyncResponse);
+            writer.Write(msg.TimestampUtc.Ticks);
+            if (msg.ExpirationUtc != null) writer.Write(msg.ExpirationUtc.Value.Ticks);
+            writer.Write(msg.ConversationGuid.ToByteArray());
+            if (msg.Status == MessageStatus.RegisterClient) writer.Write(msg.SenderGuid.ToByteArray());
+            
+            // Create the final message, making sure to insert the size of the
+            // header at the start.
+            byte[] headerBytes = stream.ToArray();
+            byte[] headerSize = BitConverter.GetBytes(headerBytes.Length);
+            return WatsonCommon.AppendBytes(headerSize, headerBytes);
+        }
+        
+        internal WatsonMessage GetWatsonMessageFromBytes(byte[] data)
+        {
+            // !!! If you're modifying this method, make sure to update the corresponding
+            // !!! GetHeaderBytes method to match the changes.
+            
+            MemoryStream stream = new MemoryStream(data);
+            BinaryReader reader = new BinaryReader(stream);
+            
+            // Get the data.
+            byte flag = reader.ReadByte();
+            long contentLength = reader.ReadInt64();
+            byte[] presharedKey = (flag & 0x01) != 0 ? reader.ReadBytes(16) : null;
+            MessageStatus status = (MessageStatus)reader.ReadInt32();
+            // TODO: Metadata.
+            //Dictionary<string, object> metadata = (flag & 0x02) != 0 ? null : null;
+            bool syncRequest = reader.ReadBoolean();
+            bool syncResponse = reader.ReadBoolean();
+            DateTime timestampUtc = new DateTime(reader.ReadInt64());
+            DateTime? expirationUtc = (flag & 0x04) != 0 ? new DateTime(reader.ReadInt64()) : (DateTime?)null;
+            Guid conversationGuid = new Guid(reader.ReadBytes(16));
+            Guid senderGuid = (flag & 0x08) != 0 ? new Guid(reader.ReadBytes(16)) : default;
+            
+            // Create the message and return it.
+            return new WatsonMessage
+            {
+                ContentLength = contentLength,
+                PresharedKey = presharedKey,
+                Status = status,
+                SyncRequest = syncRequest,
+                SyncResponse = syncResponse,
+                TimestampUtc = timestampUtc,
+                ExpirationUtc = expirationUtc,
+                ConversationGuid = conversationGuid,
+                SenderGuid = senderGuid
+            };
+        }
+
+        /// <summary>
+        /// A simple method to read a specified number of bytes from a stream.
+        /// </summary>
+        /// <param name="stream"></param>
+        /// <param name="data"></param>
+        /// <param name="start"></param>
+        /// <param name="size"></param>
+        /// <param name="token"></param>
+        /// <exception cref="IOException"></exception>
+        internal async Task<byte[]> ReadByteArray(Stream stream, byte[] data, int start, int size, CancellationToken token)
+        {
+            if (start < 0) throw new ArgumentOutOfRangeException(nameof(start), "Start must be zero or greater.");
+            if (size < 1) throw new ArgumentOutOfRangeException(nameof(size), "Size must be greater than zero.");
+            if (data.Length < start + size) throw new ArgumentException("Data array is too small.");
+            
+            int read = 0;
+            while (read < size)
+            {
+                int readNow = await stream.ReadAsync(data, start + read, size - read, token).ConfigureAwait(false);
+                if (readNow == 0) throw new IOException("End of stream reached.");
+                read += readNow;
+            }
+            
+            return data;
         }
 
         #endregion

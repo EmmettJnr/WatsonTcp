@@ -1004,7 +1004,7 @@
 
                     if (!IsClientConnected(client)) break;
 
-                    WatsonMessage msg = await _MessageBuilder.BuildFromStream(client.DataStream);
+                    WatsonMessage msg = await _MessageBuilder.BuildFromStream(client.DataStream, _Settings.MaxHeaderSize);
                     if (msg == null)
                     {
                         await Task.Delay(30, token).ConfigureAwait(false);

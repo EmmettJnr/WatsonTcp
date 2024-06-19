@@ -149,6 +149,12 @@
         /// </summary>
         public bool NoDelay { get; set; } = true;
 
+        /// <summary>
+        /// The maximum number of bytes the server will accept in a header.
+        /// If Metadata is used, this value might need to be increased depending on the size of the metadata.
+        /// </summary>
+        public long MaxHeaderSize { get; set; } = 16384;
+
         #endregion
 
         #region Private-Members

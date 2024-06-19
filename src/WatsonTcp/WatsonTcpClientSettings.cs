@@ -159,6 +159,12 @@
         /// Nagle's algorithm.  Disable the delay when send or receive buffers are not full.  If true, disable the delay.  Default is true.
         /// </summary>
         public bool NoDelay { get; set; } = true;
+        
+        /// <summary>
+        /// The maximum number of bytes the client will accept in a header.
+        /// If Metadata is used, this value might need to be increased depending on the size of the metadata.
+        /// </summary>
+        public long MaxHeaderSize { get; set; } = 16384;
 
         #endregion
 

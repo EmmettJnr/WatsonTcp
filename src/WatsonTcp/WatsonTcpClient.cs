@@ -768,7 +768,7 @@
                     #region Read-Message
 
                     await _ReadLock.WaitAsync(token);
-                    WatsonMessage msg = await _MessageBuilder.BuildFromStream(_DataStream, token);
+                    WatsonMessage msg = await _MessageBuilder.BuildFromStream(_DataStream, _Settings.MaxHeaderSize, token);
                     if (msg == null)
                     { 
                         await Task.Delay(30, token).ConfigureAwait(false);

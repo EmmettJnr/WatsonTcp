@@ -615,11 +615,12 @@
             <param name="expirationUtc">The UTC time at which the message should expire (only valid for synchronous message requests).</param>
             <param name="metadata">Metadata to attach to the message.</param>
         </member>
-        <member name="M:WatsonTcp.WatsonMessageBuilder.BuildFromStream(System.IO.Stream,System.Threading.CancellationToken)">
+        <member name="M:WatsonTcp.WatsonMessageBuilder.BuildFromStream(System.IO.Stream,System.Int64,System.Threading.CancellationToken)">
             <summary>
             Read from a stream and construct a message.
             </summary>
             <param name="stream">Stream.</param>
+            <param name="maxHeaderSize">Maximum header size.</param>
             <param name="token">Cancellation token.</param>
         </member>
         <member name="M:WatsonTcp.WatsonMessageBuilder.GetHeaderBytes(WatsonTcp.WatsonMessage)">
@@ -628,6 +629,17 @@
             </summary>
             <param name="msg">Watson message.</param>
             <returns>Header bytes.</returns>
+        </member>
+        <member name="M:WatsonTcp.WatsonMessageBuilder.ReadByteArray(System.IO.Stream,System.Byte[],System.Int32,System.Int32,System.Threading.CancellationToken)">
+            <summary>
+            A simple method to read a specified number of bytes from a stream.
+            </summary>
+            <param name="stream"></param>
+            <param name="data"></param>
+            <param name="start"></param>
+            <param name="size"></param>
+            <param name="token"></param>
+            <exception cref="T:System.IO.IOException"></exception>
         </member>
         <member name="T:WatsonTcp.WatsonStream">
             <summary>
@@ -1015,6 +1027,12 @@
         <member name="P:WatsonTcp.WatsonTcpClientSettings.NoDelay">
             <summary>
             Nagle's algorithm.  Disable the delay when send or receive buffers are not full.  If true, disable the delay.  Default is true.
+            </summary>
+        </member>
+        <member name="P:WatsonTcp.WatsonTcpClientSettings.MaxHeaderSize">
+            <summary>
+            The maximum number of bytes the client will accept in a header.
+            If Metadata is used, this value might need to be increased depending on the size of the metadata.
             </summary>
         </member>
         <member name="M:WatsonTcp.WatsonTcpClientSettings.#ctor">
@@ -1469,6 +1487,12 @@
         <member name="P:WatsonTcp.WatsonTcpServerSettings.NoDelay">
             <summary>
             Nagle's algorithm.  Disable the delay when send or receive buffers are not full.  If true, disable the delay.  Default is true.
+            </summary>
+        </member>
+        <member name="P:WatsonTcp.WatsonTcpServerSettings.MaxHeaderSize">
+            <summary>
+            The maximum number of bytes the server will accept in a header.
+            If Metadata is used, this value might need to be increased depending on the size of the metadata.
             </summary>
         </member>
         <member name="M:WatsonTcp.WatsonTcpServerSettings.#ctor">
