@@ -207,8 +207,9 @@
             if (listenerPort < 1) throw new ArgumentOutOfRangeException(nameof(listenerPort));
 
             _Mode = Mode.Tcp; 
-             
-            if (String.IsNullOrEmpty(listenerIp))
+
+             // According to the https://github.com/dotnet/WatsonTcp?tab=readme-ov-file#local-vs-external-connections
+            if (string.IsNullOrEmpty(listenerIp) || listenerIp.Equals("*") || listenerIp.Equals("+") || listenerIp.Equals("0.0.0.0"))
             {
                 _ListenerIpAddress = IPAddress.Any;
                 _ListenerIp = _ListenerIpAddress.ToString();
@@ -383,22 +384,12 @@
         /// </summary>
         public void Stop()
         {
-            if (!_IsListening) throw new InvalidOperationException("WatsonTcpServer is not running.");
+            _IsListening = false;
+            _Listener.Stop();
+            _TokenSource.Cancel();
 
-            try
-            {
-                _IsListening = false;
-                _Listener.Stop();
-                _TokenSource.Cancel();
-
-                _Settings.Logger?.Invoke(Severity.Info, _Header + "stopped");
-                _Events.HandleServerStopped(this, EventArgs.Empty);
-            }
-            catch (Exception e)
-            {
-                _Events.HandleExceptionEncountered(this, new ExceptionEventArgs(e));
-                throw;
-            }
+            _Settings.Logger?.Invoke(Severity.Info, _Header + "stopped");
+            _Events.HandleServerStopped(this, EventArgs.Empty);
         }
 
         #region SendAsync
