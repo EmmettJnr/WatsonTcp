@@ -1,3 +1,5 @@
+Includes changes to header encoding from https://github.com/Uraxys/WatsonTcp which gets this working in AOT builds as far as I've tested. I did a quick merge of the latest main in as of 22 March 2025, can't guarantee no mistakes were made in the process.
+
 ![alt tag](https://github.com/jchristn/watsontcp/blob/master/assets/watson.ico)
 
 # WatsonTcp
